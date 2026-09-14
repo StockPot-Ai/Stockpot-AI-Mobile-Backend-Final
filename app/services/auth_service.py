@@ -56,7 +56,17 @@ def register_user(full_name, email, password):
             }
             supabase.table("profiles").upsert(profile_data).execute()
 
-            session_token = res.session.access_token if res.session else "mock-token"
+            session_token = getattr(res.session, "access_token", None) if res.session else None
+            if not session_token:
+                try:
+                    sign_in_res = supabase.auth.sign_in_with_password({
+                        "email": email,
+                        "password": password
+                    })
+                    if sign_in_res.session and hasattr(sign_in_res.session, "access_token"):
+                        session_token = sign_in_res.session.access_token
+                except Exception:
+                    pass
             return True, None, {
                 "user": {
                     "id": user_id,
