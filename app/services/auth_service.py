@@ -5,6 +5,9 @@ from app.extensions import get_supabase
 logger = logging.getLogger(__name__)
 
 # In-memory password and profile storage for mock development mode
+# Track accounts registered with Google to detect conflicts on registration
+_google_registered_emails = {"ammar.google@example.com"}
+
 _mock_passwords = {
     "ammar@example.com": "password123"
 }
@@ -25,6 +28,11 @@ _mock_profiles = {
 
 def register_user(full_name, email, password):
     """Register a new user in Supabase Auth and create a profile."""
+    # Check if email is already registered via Google Sign-In
+    clean_email = (email or "").strip().lower()
+    if clean_email in _google_registered_emails:
+        return False, "This email is registered with Google Sign-In. Please sign in with Google or reset your password.", None
+
     supabase = get_supabase()
 
     if supabase is not None and Config.SUPABASE_URL:
@@ -78,11 +86,20 @@ def register_user(full_name, email, password):
             }
         except Exception as e:
             logger.error(f"Supabase registration error: {e}")
+            err_lower = str(e).lower()
             if not Config.USE_MOCK_DATA:
+                if "already registered" in err_lower or "already exists" in err_lower or "duplicate" in err_lower:
+                    if clean_email in _google_registered_emails:
+                        return False, "This email is registered with Google Sign-In. Please sign in with Google or reset your password.", None
+                    return False, "An account with this email already exists. Please sign in.", None
                 return False, str(e), None
 
     # Mock mode fallback
     if Config.USE_MOCK_DATA:
+        if clean_email in _google_registered_emails:
+            return False, "This email is registered with Google Sign-In. Please sign in with Google or reset your password.", None
+        if clean_email in _mock_passwords or any(p.get("email", "").lower() == clean_email for p in _mock_profiles.values()):
+            return False, "An account with this email already exists. Please sign in.", None
         mock_id = f"user-{len(_mock_profiles) + 1:04d}"
         profile = {
             "id": mock_id,
@@ -317,6 +334,8 @@ def login_with_google_id_token(id_token, access_token=None, nonce=None):
                 return False, "Failed to authenticate with Google token", None
 
             user_id = str(res.user.id)
+            if res.user.email:
+                _google_registered_emails.add(res.user.email.strip().lower())
             # Retrieve or automatically provision user profile
             _, _, profile = get_profile(user_id, user_obj=res.user)
 

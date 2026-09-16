@@ -1,3 +1,4 @@
+from app.routes.notification_routes import notification_bp
 from app.routes.auth_routes import auth_bp
 from app.routes.user_routes import user_bp
 from app.routes.recipe_routes import recipe_bp
@@ -19,3 +20,4 @@ def register_blueprints(app):
     app.register_blueprint(savings_bp)
     app.register_blueprint(activity_bp)
     app.register_blueprint(ai_bp)
+    app.register_blueprint(notification_bp)

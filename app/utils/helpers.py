@@ -38,7 +38,7 @@ def validate_email(email):
     return bool(re.match(pattern, email.strip()))
 
 
-def validate_password(password, min_length=6):
+def validate_password(password, min_length=8):
     """Validate password meets minimum requirements."""
     if not password or not isinstance(password, str):
         return False

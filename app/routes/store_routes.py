@@ -47,3 +47,30 @@ def get_store_discounts(store_id):
     """Return active discounts available at this supermarket."""
     discounts = get_discounts_for_store(store_id)
     return success_response(discounts, 200)
+
+@store_bp.route("/<store_id>/products", methods=["GET"])
+def get_store_products(store_id):
+    """Return all products and prices for this supermarket from Supabase."""
+    supabase = get_supabase()
+    if supabase is not None and Config.SUPABASE_URL:
+        try:
+            res = supabase.table("store_prices").select("price, product_id, products(id, name, category, unit)").eq("store_id", store_id).execute()
+            if res.data:
+                products = []
+                for row in res.data:
+                    prod_info = row.get("products") or {}
+                    products.append({
+                        "id": prod_info.get("id") or row.get("product_id"),
+                        "name": prod_info.get("name", "Grocery Item"),
+                        "category": prod_info.get("category", "General"),
+                        "price": float(row.get("price", 0)),
+                        "unit": prod_info.get("unit", "1 kg"),
+                        "stockStatus": "IN_STOCK",
+                        "updatedAt": "Live from database"
+                    })
+                return success_response(products, 200)
+        except Exception as e:
+            pass
+
+    return success_response([], 200)
+

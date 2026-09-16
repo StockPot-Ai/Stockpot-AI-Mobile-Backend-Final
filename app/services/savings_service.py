@@ -75,7 +75,7 @@ def get_savings_summary(user_id):
     weekly_average = round(this_month_saved / 4.0, 2) if this_month_saved > 0 else round(total_saved / 12.0, 2)
 
     # Meals planned count
-    meals_planned = 15
+    meals_planned = len(events)
 
     # Goal and percentage
     goal = 20000.0

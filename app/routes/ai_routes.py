@@ -10,15 +10,16 @@ ai_bp = Blueprint("ai", __name__, url_prefix="/api/ai")
 @optional_auth
 def chat():
     """
-    AI Chatbot endpoint for recipe discovery, shopping advice, and discounts.
-    Utilizes Gemini grounded in actual database catalog, or mock rule-based assistant.
+    AI Chatbot endpoint for Chef Tété.
+    Supports conversational memory (history), grounded in live Supabase database.
     """
     data = request.get_json() or {}
     message = data.get("message", "").strip()
+    history = data.get("history", [])
 
     if not message:
         return error_response("Message field is required", 400)
 
     user_id = getattr(g, "user_id", None)
-    result = chat_with_assistant(message, user_id=user_id)
+    result = chat_with_assistant(message, user_id=user_id, history=history)
     return success_response(result, 200)
