@@ -11,6 +11,113 @@ from app.config import Config
 
 store_bp = Blueprint("stores", __name__, url_prefix="/api/stores")
 
+# Known supermarket brands in Sri Lanka with official 128px logos and brand colors
+BRAND_LOGOS = [
+    {
+        "keywords": ["cargills", "food city"],
+        "brand": "Cargills Food City",
+        "logo": "https://www.google.com/s2/favicons?domain=cargillsceylon.com&sz=128",
+        "color": "#DC2626",
+        "category": "Supermarket"
+    },
+    {
+        "keywords": ["keells", "keels"],
+        "brand": "Keells Super",
+        "logo": "https://www.google.com/s2/favicons?domain=keellssuper.com&sz=128",
+        "color": "#16A34A",
+        "category": "Supermarket"
+    },
+    {
+        "keywords": ["glomark"],
+        "brand": "Softlogic GLOMARK",
+        "logo": "https://www.google.com/s2/favicons?domain=glomark.lk&sz=128",
+        "color": "#4F46E5",
+        "category": "Supermarket"
+    },
+    {
+        "keywords": ["arpico"],
+        "brand": "Arpico Supercentre",
+        "logo": "https://www.google.com/s2/favicons?domain=arpicosupercentre.com&sz=128",
+        "color": "#2563EB",
+        "category": "Supermarket"
+    },
+    {
+        "keywords": ["spar"],
+        "brand": "SPAR Supermarket",
+        "logo": "https://www.google.com/s2/favicons?domain=spar.lk&sz=128",
+        "color": "#059669",
+        "category": "Supermarket"
+    },
+    {
+        "keywords": ["laugfs", "sunup"],
+        "brand": "LAUGFS Super",
+        "logo": "https://www.google.com/s2/favicons?domain=laugfs.lk&sz=128",
+        "color": "#EA580C",
+        "category": "Supermarket"
+    },
+    {
+        "keywords": ["sathosa"],
+        "brand": "Lanka Sathosa",
+        "logo": "https://upload.wikimedia.org/wikipedia/en/1/1b/Lanka_Sathosa_logo.png",
+        "color": "#D97706",
+        "category": "Supermarket"
+    }
+]
+
+# Non-grocery keywords to strictly filter out clothing, fashion, tailoring, malls, etc.
+NON_GROCERY_KEYWORDS = [
+    "clothing", "clothes", "fashion", "apparel", "textile", "garment",
+    "tailor", "shoes", "footwear", "spring and summer", "spring & summer",
+    "odel", "nolimit", "fashion bug", "glitz", "hameedia", "kelly felder",
+    "cotton collection", "house of fashion", "cool planet", "zigzag",
+    "dsi", "bata", "thilakawardhana", "cib", "lady j", "romafour",
+    "beverly street", "emerald", "moose", "jewel", "watch", "salon",
+    "optician", "bookshop", "pharmacy", "hardware", "electronics",
+    "furniture", "plaza", "complex", "mall", "tailoring", "embroidery",
+    "saree", "textiles", "boutique", "lingerie", "opticals", "mobile",
+    "cellular", "telecom", "stationery", "sports", "fitness", "perfume"
+]
+
+
+def get_store_brand_meta(name):
+    """Resolve brand metadata including official logo and color."""
+    if not name:
+        return {"brand": "Grocery", "logo": None, "color": "#007A3D", "category": "Grocery"}
+    name_lower = name.lower()
+    for b in BRAND_LOGOS:
+        if any(kw in name_lower for kw in b["keywords"]):
+            return {
+                "brand": b["brand"],
+                "logo": b["logo"],
+                "color": b["color"],
+                "category": b["category"]
+            }
+    return {
+        "brand": name,
+        "logo": None,
+        "color": "#007A3D",
+        "category": "Grocery"
+    }
+
+
+def is_valid_grocery_store(name):
+    """Check if the store is a valid food/grocery store and not a fashion/clothing brand."""
+    if not name or len(name.strip()) < 2:
+        return False
+    name_lower = name.lower()
+
+    # Major supermarket chains are always allowed
+    for b in BRAND_LOGOS:
+        if any(kw in name_lower for kw in b["keywords"]):
+            return True
+
+    # Exclude non-grocery keywords
+    for kw in NON_GROCERY_KEYWORDS:
+        if kw in name_lower:
+            return False
+
+    return True
+
 
 def calculate_distance_km(lat1, lon1, lat2, lon2):
     """Calculate Haversine distance between two points in kilometers."""
@@ -74,18 +181,27 @@ def get_nearby_stores():
             res = supabase.table("stores").select("*").execute()
             if res.data:
                 for s in res.data:
+                    name = s.get("name", "")
+                    if not is_valid_grocery_store(name):
+                        continue
                     s_lat = s.get("latitude")
                     s_lng = s.get("longitude")
                     dist = calculate_distance_km(user_lat, user_lng, s_lat, s_lng) if (s_lat and s_lng) else None
                     if dist is not None and dist > 15.0:
                         continue
-                    norm = "".join(c for c in (s.get("name") or "").lower() if c.isalnum())
+                    norm = "".join(c for c in name.lower() if c.isalnum())
                     if norm:
                         seen_names.add(norm)
+
+                    meta = get_store_brand_meta(name)
+                    logo = s.get("logo_url") or s.get("logo") or meta.get("logo")
+
                     nearby_stores.append({
                         "id": s.get("id"),
-                        "name": s.get("name"),
-                        "category": s.get("category", "Supermarket"),
+                        "name": name,
+                        "category": s.get("category") or meta.get("category", "Supermarket"),
+                        "logo": logo,
+                        "color": meta.get("color", "#007A3D"),
                         "address": s.get("address", "Sri Lanka"),
                         "latitude": s_lat,
                         "longitude": s_lng,
@@ -98,7 +214,7 @@ def get_nearby_stores():
                         "isLocalShop": s.get("is_local", False),
                         "deliveryAvailable": s.get("delivery_available", False),
                         "pickupAvailable": True,
-                        "googleMapsUrl": f"https://www.google.com/maps/search/?api=1&query={urllib.parse.quote(s.get('name', ''))}",
+                        "googleMapsUrl": f"https://www.google.com/maps/search/?api=1&query={urllib.parse.quote(name)}",
                         "googleDirectionsUrl": f"https://www.google.com/maps/dir/?api=1&destination={s_lat},{s_lng}" if (s_lat and s_lng) else None
                     })
         except Exception:
@@ -113,7 +229,7 @@ def get_nearby_stores():
         search_terms = ["supermarket", "grocery"]
         for term in search_terms:
             try:
-                url = f"https://nominatim.openstreetmap.org/search?q={term}&format=json&limit=12&viewbox={viewbox}&bounded=1"
+                url = f"https://nominatim.openstreetmap.org/search?q={term}&format=json&limit=14&viewbox={viewbox}&bounded=1"
                 req = urllib.request.Request(url, headers=headers)
                 with urllib.request.urlopen(req, timeout=4) as response:
                     if response.status == 200:
@@ -121,7 +237,7 @@ def get_nearby_stores():
                         if isinstance(items, list):
                             for item in items:
                                 raw_title = item.get("display_name", "").split(",")[0].strip()
-                                if not raw_title:
+                                if not is_valid_grocery_store(raw_title):
                                     continue
                                 norm = "".join(c for c in raw_title.lower() if c.isalnum())
                                 if norm in seen_names:
@@ -134,13 +250,15 @@ def get_nearby_stores():
                                     continue
                                 seen_names.add(norm)
 
-                                is_super = any(kw in raw_title.lower() for kw in ["super", "cargills", "keells", "glomark", "arpico", "spar"])
+                                meta = get_store_brand_meta(raw_title)
+                                is_super = meta.get("category") == "Supermarket" or any(kw in raw_title.lower() for kw in ["super", "cargills", "keells", "glomark", "arpico", "spar"])
 
                                 nearby_stores.append({
                                     "id": f"osm_nom_{item.get('place_id') or abs(int(item_lat * 10000))}",
                                     "name": raw_title,
                                     "category": "Supermarket" if is_super else "Grocery",
-                                    "color": "#007A3D",
+                                    "logo": meta.get("logo"),
+                                    "color": meta.get("color", "#007A3D"),
                                     "latitude": item_lat,
                                     "longitude": item_lon,
                                     "address": item.get("display_name", f"{raw_title}, Sri Lanka"),
