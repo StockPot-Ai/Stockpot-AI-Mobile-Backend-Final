@@ -186,27 +186,64 @@ def forgot_password():
 
 @auth_bp.route("/send-verification", methods=["POST"])
 def send_verification():
-    """Send email verification link or 6-digit code."""
+    """Send real email verification 6-digit code via Supabase Auth OTP."""
     data = request.get_json() or {}
-    email = data.get("email", "").strip()
+    email = data.get("email", "").strip().lower()
 
     if not validate_email(email):
         return error_response("A valid email address is required", 400)
 
-    return success_response({"message": f"Verification code dispatched to {email}"}, 200)
+    try:
+        import urllib.request, json
+        supa_url = f"{Config.SUPABASE_URL}/auth/v1/otp"
+        headers = {
+            "apikey": Config.SUPABASE_ANON_KEY,
+            "Content-Type": "application/json"
+        }
+        body = json.dumps({"email": email, "create_user": True}).encode("utf-8")
+        req = urllib.request.Request(supa_url, data=body, headers=headers)
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            pass
+        return success_response({"message": f"Verification code dispatched to {email} via Supabase"}, 200)
+    except Exception as e:
+        try:
+            supabase = get_supabase()
+            if supabase:
+                supabase.auth.sign_in_with_otp({"email": email})
+                return success_response({"message": f"Verification code dispatched to {email} via Supabase"}, 200)
+        except Exception:
+            pass
+        return error_response(f"Failed to dispatch verification code: {str(e)}", 500)
 
 
 @auth_bp.route("/verify-email", methods=["POST"])
 def verify_email():
-    """Verify user email with code."""
+    """Verify user email with 6-digit code via Supabase Auth."""
     data = request.get_json() or {}
     code = str(data.get("code", "")).strip()
-    email = data.get("email", "").strip()
+    email = data.get("email", "").strip().lower()
 
     if not code or len(code) != 6:
         return error_response("A 6-digit verification code is required", 400)
 
-    return success_response({"verified": True, "message": "Email successfully verified!"}, 200)
+    try:
+        import urllib.request, json
+        supa_url = f"{Config.SUPABASE_URL}/auth/v1/verify"
+        headers = {
+            "apikey": Config.SUPABASE_ANON_KEY,
+            "Content-Type": "application/json"
+        }
+        body = json.dumps({"type": "email", "email": email, "token": code}).encode("utf-8")
+        req = urllib.request.Request(supa_url, data=body, headers=headers)
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            resp_data = json.loads(resp.read().decode())
+            return success_response({
+                "verified": True,
+                "message": "Email successfully verified via Supabase!",
+                "user": resp_data.get("user")
+            }, 200)
+    except Exception as e:
+        return error_response("Invalid or expired verification code. Please check your email and try again.", 400)
 
 
 @auth_bp.route("/google/url", methods=["GET", "POST"])

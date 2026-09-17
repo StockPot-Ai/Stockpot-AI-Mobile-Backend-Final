@@ -15,12 +15,11 @@ def list_stores():
     if supabase is not None and Config.SUPABASE_URL:
         try:
             res = supabase.table("stores").select("*").execute()
-            if res.data:
-                return success_response(res.data, 200)
+            return success_response(res.data if res.data is not None else [], 200)
         except Exception:
             pass
 
-    return success_response(MOCK_STORES, 200)
+    return success_response([], 200)
 
 
 @store_bp.route("/<store_id>", methods=["GET"])
@@ -35,11 +34,7 @@ def get_store(store_id):
         except Exception:
             pass
 
-    store = STORE_BY_ID.get(store_id)
-    if not store:
-        return error_response("Store not found", 404)
-
-    return success_response(store, 200)
+    return error_response("Store not found", 404)
 
 
 @store_bp.route("/<store_id>/discounts", methods=["GET"])
