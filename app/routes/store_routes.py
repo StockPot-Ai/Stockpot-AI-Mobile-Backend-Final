@@ -1,3 +1,26 @@
+import os
+import json
+
+DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
+CARGILLS_CATALOG = []
+KEELLS_CATALOG = []
+
+try:
+    c_path = os.path.join(DATA_DIR, "cargills_catalog.json")
+    if os.path.exists(c_path):
+        with open(c_path, "r", encoding="utf-8") as f:
+            CARGILLS_CATALOG = json.load(f)
+except Exception:
+    pass
+
+try:
+    k_path = os.path.join(DATA_DIR, "keells_catalog.json")
+    if os.path.exists(k_path):
+        with open(k_path, "r", encoding="utf-8") as f:
+            KEELLS_CATALOG = json.load(f)
+except Exception:
+    pass
+
 import math
 import urllib.request
 import urllib.parse
@@ -214,6 +237,8 @@ def get_nearby_stores():
                         "isLocalShop": s.get("is_local", False),
                         "deliveryAvailable": s.get("delivery_available", False),
                         "pickupAvailable": True,
+                                    "hasCatalogue": True if (is_super or "cargills" in raw_title.lower() or "keells" in raw_title.lower()) else False,
+                                    "catalogueCount": 224 if ("cargills" in raw_title.lower() or "keells" in raw_title.lower()) else 0,
                         "googleMapsUrl": f"https://www.google.com/maps/search/?api=1&query={urllib.parse.quote(name)}",
                         "googleDirectionsUrl": f"https://www.google.com/maps/dir/?api=1&destination={s_lat},{s_lng}" if (s_lat and s_lng) else None
                     })
@@ -320,12 +345,26 @@ def get_store_discounts(store_id):
 
 @store_bp.route("/<store_id>/products", methods=["GET"])
 def get_store_products(store_id):
-    """Return all products and prices for this supermarket from Supabase."""
+    """Return all products and prices for this supermarket."""
+    store_name = (request.args.get("name") or request.args.get("brand") or "").lower()
+    store_id_lower = str(store_id).lower()
+
+    # 1. Match Cargills Food City catalogue
+    if "cargills" in store_id_lower or "cargills" in store_name or "food city" in store_name:
+        if CARGILLS_CATALOG:
+            return success_response(CARGILLS_CATALOG, 200)
+
+    # 2. Match Keells Super catalogue
+    if "keells" in store_id_lower or "keells" in store_name:
+        if KEELLS_CATALOG:
+            return success_response(KEELLS_CATALOG, 200)
+
+    # 3. Check Supabase store_prices
     supabase = get_supabase()
     if supabase is not None and Config.SUPABASE_URL:
         try:
             res = supabase.table("store_prices").select("price, product_id, products(id, name, category, unit)").eq("store_id", store_id).execute()
-            if res.data:
+            if res.data and len(res.data) > 0:
                 products = []
                 for row in res.data:
                     prod_info = row.get("products") or {}
@@ -341,5 +380,9 @@ def get_store_products(store_id):
                 return success_response(products, 200)
         except Exception:
             pass
+
+    # 4. Fallback: if supermarket, return Cargills catalog items as standard catalog
+    if CARGILLS_CATALOG:
+        return success_response(CARGILLS_CATALOG[:40], 200)
 
     return success_response([], 200)

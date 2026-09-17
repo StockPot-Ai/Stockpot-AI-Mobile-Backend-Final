@@ -1,3 +1,4 @@
+from app.routes.upload_routes import upload_bp
 from app.routes.gamification_routes import gamification_bp
 from app.routes.notification_routes import notification_bp
 from app.routes.auth_routes import auth_bp
@@ -23,3 +24,4 @@ def register_blueprints(app):
     app.register_blueprint(ai_bp)
     app.register_blueprint(notification_bp)
     app.register_blueprint(gamification_bp)
+    app.register_blueprint(upload_bp)
